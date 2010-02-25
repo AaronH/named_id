@@ -1,0 +1,18 @@
+NamedID
+
+Aaron Hurley<aaron@zealog.com>
+Feb 24, 2010
+=====
+
+
+
+This is my constantly evolving permalink generating plugin for Rails.  Started from building off of acts_as_sluggable () but is hardly recognizable as that any longer.  
+
+Requirements
+  Rails 3
+  MySQL (or compatible database)*
+
+  *This does not work with SQLite that comes with Rails because it cannot search with regular expressions.
+  
+
+
