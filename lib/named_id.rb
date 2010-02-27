@@ -16,7 +16,8 @@ module NamedID
       self.before_slug    = options[:before_slug]
       
       validates_uniqueness_of slug_column.intern, :on => :save, :message => "is already taken", :scope => slug_scope
-      scope :sluggable,  lambda {|slugs| where("#{quoted_table_name}.`#{slug_column}` in (?)", [*slugs])}
+      scope :sluggable,   lambda {|slug| where("#{quoted_table_name}.`#{slug_column}` = ?", slug)}
+      scope :sluggables,  lambda {|slugs| where("#{quoted_table_name}.`#{slug_column}` in (?)", [*slugs])}
       
       class_eval <<-EOV
       
@@ -73,7 +74,11 @@ module NamedID
       # Check to see if you are attempting to find by the real ID or the slug      
       if NamedID.should_find_by_slug?(args.first)
         options = args.extract_options!
-        sluggable(args.first).send((args.first.class == Array ? 'all' : 'first'), options)
+        if args.first.class == Array
+          sluggables(args.first).all options
+        else
+          sluggable(args.first).first options
+        end        
       else        
         super
       end
@@ -83,7 +88,11 @@ module NamedID
     def named(*args)
       if NamedID.should_find_by_slug?(args.first)
         options = args.extract_options!
-        sluggable(args.first).send((args.first.class == Array ? 'all' : 'first'), options)
+        if args.first.class == Array
+          sluggables(args.first).all options
+        else
+          sluggable(args.first).first options
+        end
       else
         find *args
       end
