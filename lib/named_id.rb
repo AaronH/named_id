@@ -64,9 +64,8 @@ module NamedID
             where("#{quoted_table_name}.`#{slug_column}` REGEXP '^\#\{base_slug\}(-[0-9]+)\?$'").
             order("length(#{quoted_table_name}.`#{slug_column}`) DESC, #{quoted_table_name}.`#{slug_column}` DESC") if base_slug
         end
-        
+                
       EOV
-      
       
     end
     
@@ -77,6 +76,16 @@ module NamedID
         sluggable(args.first).send((args.first.class == Array ? 'all' : 'first'), options)
       else        
         super
+      end
+    end
+    
+        
+    def named(*args)
+      if NamedID.should_find_by_slug?(args.first)
+        options = args.extract_options!
+        sluggable(args.first).send((args.first.class == Array ? 'all' : 'first'), options)
+      else
+        find *args
       end
     end
     
@@ -97,7 +106,7 @@ module NamedID
   def base_slug
     slug_source.strip.downcase.
       gsub(/<[^>]*>/,   '').
-      gsub(/[^a-z0-9]/, '-').
+      gsub(/[^a-z0-9\:]/, '-').
       gsub(/\-{2,}/,    '-').
       gsub(/\-$/,       '') if slug_source?
   end
