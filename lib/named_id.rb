@@ -15,7 +15,8 @@ module NamedID
       self.slug_scope     = options[:slug_scope]
       self.before_slug    = options[:before_slug]
       
-      validates_uniqueness_of slug_column.intern, :on => :save, :message => "is already taken", :scope => slug_scope
+      validates slug_column.intern, :uniqueness => {:scope => slug_scope}
+      
       scope :sluggable,   lambda {|slug| where("#{quoted_table_name}.`#{slug_column}` = ?", slug)}
       scope :sluggables,  lambda {|slugs| where("#{quoted_table_name}.`#{slug_column}` in (?)", [*slugs])}
       
@@ -60,7 +61,7 @@ module NamedID
         end
         
         # Find all items using the same base slug with the highest (or most recent) one first. 
-        def similar          
+        def similar_slugs          
           scope_condition.
             where("#{quoted_table_name}.`#{slug_column}` REGEXP '^\#\{base_slug\}(-[0-9]+)\?$'").
             order("length(#{quoted_table_name}.`#{slug_column}`) DESC, #{quoted_table_name}.`#{slug_column}` DESC") if base_slug
@@ -84,7 +85,15 @@ module NamedID
       end
     end
     
-        
+    # this is safer than using find for locating via the url slug
+    # as the AR.find method is not called on associated objects.
+    #
+    # For example, blog = Blog,find('my-first-post') works.
+    # However, blog.comments.find('comment-subject-line') will fail
+    # as the ARelation.find method is called instead.
+    #
+    # I'm not really sure how to fix that, so using .named when 
+    # you want it is the best bet.
     def named(*args)
       if NamedID.should_find_by_slug?(args.first)
         options = args.extract_options!
@@ -121,7 +130,7 @@ module NamedID
   end
   
   def suffix
-    next_suffix if similar.any?
+    next_suffix if similar_slugs.any?
   end
 
   # the compute the next suffix for the base slug
@@ -131,7 +140,7 @@ module NamedID
   
   # the last used suffix for this base_slug
   def last_suffix
-    similar.first.try(slug_column).to_s.match(%r(#{base_slug}-([0-9]+)$)).to_a.last
+    similar_slugs.first.try(slug_column).to_s.match(%r(#{base_slug}-([0-9]+)$)).to_a.last
   end
   
   # Look at the arguments for the find method and determine
@@ -147,10 +156,14 @@ module NamedID
       # We need to check the numericality of a string because
       # things like delayed_job will give us a number that 
       # should be used on the real ID column.  
-      !Float(item) rescue true
-      
+      begin
+        !Float(item)
+      rescue ArgumentError, TypeError
+        true
+      end
+        
     when 'Float', 'Fixnum', 'Symbol'
-      # if the argument is a number, so we shouldn't search by the slug
+      # if the argument is a number, we shouldn't search by the slug
       # if it is a symbol, it is :all, :first, etc. so pass to super
       false      
     end
