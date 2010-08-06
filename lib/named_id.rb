@@ -9,17 +9,19 @@ module NamedID
     
     def named_id(options = {})
       # initialize with source column, slug column, scope, and before filters
-      cattr_accessor :source_column, :slug_column, :slug_scope, :before_slug
+      cattr_accessor :source_column, :slug_column, :slug_scope, :before_slug, :slug_hash, :slug_salt
       self.source_column  = (options[:source_column] || :name).to_s
       self.slug_column    = (options[:slug_column]   || :url_slug).to_s
       self.slug_scope     = options[:slug_scope]
       self.before_slug    = options[:before_slug]
+      self.slug_hash      = options[:hash] || false
+      self.slug_salt      = (slug_hash[:salt] if slug_hash.is_a?(Hash)) || name
       
       validates slug_column.intern, :uniqueness => {:scope => slug_scope}
       
       scope :sluggable,   lambda {|slug| where("#{quoted_table_name}.`#{slug_column}` = ?", slug)}
       scope :sluggables,  lambda {|slugs| where("#{quoted_table_name}.`#{slug_column}` in (?)", [*slugs])}
-      
+            
       class_eval <<-EOV
       
         # Setup the callbacks and generation of slug
@@ -31,6 +33,10 @@ module NamedID
           #{name}.
             where(['#{quoted_table_name}.`#{primary_key}` <> ?', (#{primary_key} || -1)]).
             where(#{slug_scope.is_a?(Symbol) ? %({:#{slug_scope} => #{slug_scope}}) : slug_scope.inspect})
+        end
+                
+        def word_slug?
+          !slug_hash
         end
         
         def to_param
@@ -54,23 +60,16 @@ module NamedID
           self.#{slug_column} = _slug.blank? ? (slug || build_slug) : _slug
         end
         
-        # If the slug is blank or the source column has changed in a way that updates the base_slug
-        # we will need to update
-        def slug_needs_update?
-          slug.blank? || (#{source_column}_changed? and base_slug != slug.gsub(/\-[0-9]+$/,''))
-        end
-        
         # Find all items using the same base slug with the highest (or most recent) one first. 
         def similar_slugs          
           scope_condition.
             where("#{quoted_table_name}.`#{slug_column}` REGEXP '^\#\{base_slug\}(-[0-9]+)\?$'").
             order("length(#{quoted_table_name}.`#{slug_column}`) DESC, #{quoted_table_name}.`#{slug_column}` DESC") if base_slug
-        end
-                
+        end   
       EOV
-      
+          
     end
-    
+      
     def find(*args)      
       # Check to see if you are attempting to find by the real ID or the slug      
       if NamedID.should_find_by_slug?(args.first)
@@ -108,17 +107,20 @@ module NamedID
     end
     
   end
-    
-  # assign the slug
-  def create_slug
-    self.slug = build_slug if slug_needs_update?
-  end
-
-  # compute the slug
+  
   def build_slug
     [base_slug, suffix].compact.join '-' if slug_source?
   end
-
+  
+  def build_hash
+    Digest::MD5.hexdigest([Time.now, slug_salt, build_slug].compact.join(' ')) if slug_source?
+  end
+  
+  # assign the slug
+  def create_slug
+    self.slug = (word_slug? ? build_slug : (slug.blank? ? build_hash : slug)) if slug_needs_update?
+  end
+  
   # clean the source column of html and 
   # other characters first
   def base_slug
@@ -127,6 +129,12 @@ module NamedID
       gsub(/[^a-z0-9\:]/, '-').
       gsub(/\-{2,}/,    '-').
       gsub(/\-$/,       '') if slug_source?
+  end
+  
+  # If the slug is blank or the source column has changed in a way that updates the base_slug
+  # we will need to update
+  def slug_needs_update?
+    slug.blank? || (word_slug? and send("#{source_column}_changed?") and base_slug != slug.gsub(/\-[0-9]+$/,''))
   end
   
   def suffix
