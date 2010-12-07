@@ -126,9 +126,13 @@ module NamedID
   def base_slug
     slug_source.strip.downcase.
       gsub(/<[^>]*>/,   '').
+      gsub(/[é]/, 'e').
+      gsub(/[í]/,'i').
+      gsub(/[ó]/, 'o').
+      gsub(/[ú]/, 'u').
       gsub(/[^a-z0-9\:]/, '-').
       gsub(/\-{2,}/,    '-').
-      gsub(/\-$/,       '') if slug_source?
+      gsub(/^\-|\-$/,       '') if slug_source?
   end
   
   # If the slug is blank or the source column has changed in a way that updates the base_slug
